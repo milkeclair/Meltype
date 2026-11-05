@@ -504,6 +504,33 @@ internal sealed class SettingsForm : Form, IMessageFilter
                 s => text.Text = (string?)property.GetValue(s) ?? "",
                 s => property.SetValue(s, text.Text.Trim()));
         }
+        if (type == typeof(string) && property.Name is nameof(Settings.ZenzaiServerPath) or nameof(Settings.ZenzaiModelPath))
+        {
+            var name = property.GetCustomAttribute<DisplayNameAttribute>()?.DisplayName ?? property.Name;
+            var description = property.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "";
+            var box = new TextBox { Dock = DockStyle.Fill, AccessibleName = name, TabIndex = 0 };
+            var pick = new Button { Text = "参照…", AutoSize = true, Dock = DockStyle.Right, AccessibleName = name + "の参照", TabIndex = 1 };
+            pick.Click += (_, _) =>
+            {
+                using var dialog = new OpenFileDialog
+                {
+                    Filter = property.Name == nameof(Settings.ZenzaiServerPath)
+                        ? "実行ファイル (*.exe)|*.exe|すべてのファイル (*.*)|*.*"
+                        : "GGUF モデル (*.gguf)|*.gguf|すべてのファイル (*.*)|*.*",
+                    FileName = File.Exists(box.Text) ? box.Text : "",
+                    RestoreDirectory = true,
+                };
+                if (dialog.ShowDialog(this) == DialogResult.OK) box.Text = dialog.FileName;
+            };
+            var panel = new UserControl { Height = Math.Max(box.PreferredHeight, pick.PreferredSize.Height) + 4, Dock = DockStyle.Fill, TabStop = false };
+            panel.Controls.Add(box);
+            panel.Controls.Add(pick);
+            ShowHelpFor(box, name, description);
+            ShowHelpFor(pick, name, description);
+            return new Binding(property, panel,
+                s => box.Text = (string?)property.GetValue(s) ?? "",
+                s => property.SetValue(s, box.Text));
+        }
         if (type == typeof(string))
         {
             // 入力モードの表示の色・定型文を出す記号など

@@ -72,6 +72,46 @@ internal static class SettingsFormTests
         Assert.True(choices.Items.Contains("雑談"), "読み込み後の編集は、アプリ別設定の選択肢にすぐ反映する");
     }
 
+    [Test]
+    public static void SettingsForm_ZenzaiPathsCollectEditsAndEmptyValues()
+    {
+        var settings = new Settings
+        {
+            ZenzaiServerPath = @"C:\Zenzai tools\llama-server.exe",
+            ZenzaiModelPath = @"C:\モデル\zenz.gguf",
+        };
+        using var engine = new MeltypeEngine(settings, null, null);
+        using var form = new UI.SettingsForm(engine, new AppState());
+        var controls = Descendants(form).ToList();
+        var server = controls.OfType<TextBox>().Single(c => c.AccessibleName == "Zenzai: llama-server の場所");
+        var model = controls.OfType<TextBox>().Single(c => c.AccessibleName == "Zenzai: モデル (GGUF) の場所");
+        Assert.Equal(settings.ZenzaiServerPath, server.Text, "既存の実行ファイルの場所を読み込める");
+        Assert.Equal(settings.ZenzaiModelPath, model.Text, "日本語を含むモデルの場所を読み込める");
+        form.Show();
+        foreach (var width in new[] { form.Width, form.MinimumSize.Width })
+        {
+            form.Width = width;
+            form.PerformLayout();
+            foreach (var box in new[] { server, model })
+            {
+                var pick = box.Parent!.Controls.OfType<Button>().Single();
+                Assert.True(box.Width > 0 && box.Right <= pick.Left, "狭いウィンドウで参照ボタンが入力欄と重ならない");
+                Assert.True(pick.Right <= box.Parent.ClientSize.Width, "参照ボタンが枠からはみ出さない");
+            }
+        }
+        server.Text = @"D:\別の場所\llama-server.exe";
+        model.Text = @"D:\別の場所\zenz.gguf";
+        var collect = form.GetType().GetMethod("Collect", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var next = (Settings)collect.Invoke(form, null)!;
+        Assert.Equal(server.Text, next.ZenzaiServerPath, "手入力した実行ファイルの場所を設定に取り込める");
+        Assert.Equal(model.Text, next.ZenzaiModelPath, "手入力したモデルの場所を設定に取り込める");
+        server.Clear();
+        model.Clear();
+        next = (Settings)collect.Invoke(form, null)!;
+        Assert.Equal("", next.ZenzaiServerPath, "実行ファイルの場所を空欄に戻すと設定値も空文字になる");
+        Assert.Equal("", next.ZenzaiModelPath, "モデルの場所を空欄に戻すと設定値も空文字になる");
+    }
+
     private static IEnumerable<Control> Descendants(Control root)
     {
         foreach (Control child in root.Controls)
