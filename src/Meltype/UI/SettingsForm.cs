@@ -508,7 +508,14 @@ internal sealed class SettingsForm : Form, IMessageFilter
         {
             var name = property.GetCustomAttribute<DisplayNameAttribute>()?.DisplayName ?? property.Name;
             var description = property.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "";
-            var box = new TextBox { Dock = DockStyle.Fill, AccessibleName = name, TabIndex = 0 };
+            var box = new TextBox { Dock = DockStyle.Fill, AccessibleName = name, TabIndex = 0, AllowDrop = true };
+            static string? DroppedFile(IDataObject? data) =>
+                data?.GetData(DataFormats.FileDrop) is string[] { Length: 1 } files && File.Exists(files[0]) ? files[0] : null;
+            box.DragEnter += (_, e) => e.Effect = DroppedFile(e.Data) is not null ? DragDropEffects.Copy : DragDropEffects.None;
+            box.DragDrop += (_, e) =>
+            {
+                if (DroppedFile(e.Data) is { } file) box.Text = file;
+            };
             var pick = new Button { Text = "参照…", AutoSize = true, Dock = DockStyle.Right, AccessibleName = name + "の参照", TabIndex = 1 };
             pick.Click += (_, _) =>
             {

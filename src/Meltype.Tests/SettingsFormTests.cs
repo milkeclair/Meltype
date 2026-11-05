@@ -112,6 +112,56 @@ internal static class SettingsFormTests
         Assert.Equal("", next.ZenzaiModelPath, "モデルの場所を空欄に戻すと設定値も空文字になる");
     }
 
+    [Test]
+    public static void SettingsForm_ZenzaiPathsAcceptSingleDroppedFile()
+    {
+        var directory = Directory.CreateTempSubdirectory("meltype-file-drop-");
+        try
+        {
+            var serverPath = Path.Combine(directory.FullName, "変換 tools.exe");
+            var modelPath = Path.Combine(directory.FullName, "変換 model.gguf");
+            File.WriteAllText(serverPath, "");
+            File.WriteAllText(modelPath, "");
+            using var engine = new MeltypeEngine(new Settings(), null, null);
+            using var form = new UI.SettingsForm(engine, new AppState());
+            var boxes = Descendants(form).OfType<TextBox>().ToList();
+            var server = boxes.Single(c => c.AccessibleName == "Zenzai: llama-server の場所");
+            var model = boxes.Single(c => c.AccessibleName == "Zenzai: モデル (GGUF) の場所");
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            void DragAndDrop(TextBox box, DataObject data, DragDropEffects expected)
+            {
+                var args = new DragEventArgs(data, 0, 0, 0, DragDropEffects.Copy, DragDropEffects.None);
+                typeof(Control).GetMethod("OnDragEnter", flags)!.Invoke(box, [args]);
+                Assert.Equal(expected, args.Effect, "受け付けるデータだけコピーとして表示する");
+                typeof(Control).GetMethod("OnDragDrop", flags)!.Invoke(box, [args]);
+            }
+            foreach (var (box, file) in new[] { (server, serverPath), (model, modelPath) })
+            {
+                Assert.True(box.AllowDrop, "ファイルをドロップできる");
+                DragAndDrop(box, new DataObject(DataFormats.FileDrop, new[] { file }), DragDropEffects.Copy);
+                Assert.Equal(file, box.Text, "ドロップしたファイルのパスが入る");
+                foreach (var data in new[]
+                {
+                    new DataObject(DataFormats.FileDrop, new[] { serverPath, modelPath }),
+                    new DataObject(DataFormats.FileDrop, new[] { directory.FullName }),
+                    new DataObject(DataFormats.FileDrop, new[] { Path.Combine(directory.FullName, "missing.gguf") }),
+                    new DataObject(DataFormats.UnicodeText, file),
+                })
+                {
+                    DragAndDrop(box, data, DragDropEffects.None);
+                    Assert.Equal(file, box.Text, "ファイル1つ以外のデータでは既存のパスを保つ");
+                }
+            }
+            var next = (Settings)form.GetType().GetMethod("Collect", flags)!.Invoke(form, null)!;
+            Assert.Equal(serverPath, next.ZenzaiServerPath, "ドロップした実行ファイルのパスを設定に取り込む");
+            Assert.Equal(modelPath, next.ZenzaiModelPath, "ドロップしたモデルのパスを設定に取り込む");
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
     private static IEnumerable<Control> Descendants(Control root)
     {
         foreach (Control child in root.Controls)
